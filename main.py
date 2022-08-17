@@ -11,8 +11,8 @@ import keep_alive
 import asyncio
 import random
 import datetime
-
-
+import youtube_dl
+import time
 client = commands.Bot(command_prefix = '.')
 
 @client.event
@@ -105,6 +105,11 @@ async def unban(ctx, *, member):
             embed.set_author(name=f"requested by {username_1}", icon_url=avatar_1)
             await ctx.send(embed=embed)
             return
+
+@client.command(brief="The github page of FlashDrive")
+async def source(ctx):
+  link = "https://github.com/LucaBarbaLata/FlashDrive"
+  await ctx.send(link)
 
 @client.command(brief="Used to kick members from this server")
 @has_permissions(kick_members=True)
@@ -211,14 +216,45 @@ async def reroll(ctx, channel: discord.TextChannel, id_ : int):
 
 
 
+#qr code creator
 
+@client.command(brief="Make a qr code")
+async def qr(ctx, *, data):
+  import qrcode
+  import image
+ 
 
+  img = qrcode.make(data)
+  img.save('QR_code.png')
+  await ctx.reply(file=discord.File('QR_code.png'))
+  
 
+#notepad
 
+@client.command(brief="Create a txt file")
+async def create(ctx, name):
+  with open(f"TXT files/{name}.txt", "w"):
+    return
+  await ctx.send(str(f"Txt file created with the name: {name}"))
+    
 
+@client.command(brief="Write to a txt file")
+async def write(ctx, name, *, text):
+  with open(f"TXT files/{name}.txt", "w") as f:
+    f.write(text)
+    await ctx.send(str("Saved. Type .view (file name) to view to content"))
 
+@client.command(brief="View the content of a txt file")
+async def view(ctx, name):
+  with open(f"TXT files/{name}.txt", "r") as f:
+    content = f.readlines()
+  await ctx.send(str(f"{name}:"))
+  await ctx.send(content)
 
-
+@client.command(brief="Delete a txt file")
+async def delete(ctx, name):
+  if os.path.exists(f"TXT files/{name}.txt"):
+    os.remove(f"TXT files/{name}.txt")
 
 
 
