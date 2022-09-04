@@ -366,7 +366,7 @@ async def balance(ctx):
     await ctx.send(embed=em)
 
 
-@client.command(brief="Beg for money you broke ass")
+@client.command(brief="Beg for money")
 async def beg(ctx):
     await open_account(ctx.author)
 
@@ -381,7 +381,7 @@ async def beg(ctx):
         json.dump(users, f)
 
 @commands.cooldown(1, 60, commands.BucketType.user)
-@client.command(brief="Work you nigga bro")
+@client.command(brief="Work for 💲")
 async def work(ctx):
     await open_account(ctx.author)
 
@@ -422,7 +422,7 @@ async def get_bank_data():
     return users
 
 
-@client.command()
+@client.command(brief="Used to deposit money to your bank")
 async def deposit(ctx, amount):
     users = await get_bank_data()
     user = ctx.author
@@ -442,7 +442,7 @@ async def deposit(ctx, amount):
         await ctx.send(res)
 
 
-@client.command()
+@client.command(brief="Used to withdraw money from the bank")
 async def withdraw(ctx, amount):
     users = await get_bank_data()
     user = ctx.author
@@ -461,7 +461,7 @@ async def withdraw(ctx, amount):
         res = f'Succesfuly put {amount} into the wallet.'
         await ctx.send(res)
 
-@client.command()
+@client.command(brief="Displays you the items available in the stock")
 async def store(ctx):
     page1 = discord.Embed(title="Page 1/3", description="Watch - 100 Code: 2jjk9", colour=discord.Colour.orange())
     page2 = discord.Embed(title="Page 2/3", description="Laptop - 1000 Code: 33f6g", colour=discord.Colour.orange())
@@ -507,7 +507,7 @@ async def store(ctx):
 
 
 
-@client.command()
+@client.command(brief="Buy an item from the store")
 async def buy(ctx, item_code):
     codes = ["2jjk9","33f6g","2fer6"]
     if item_code not in codes:
@@ -556,7 +556,7 @@ async def buy(ctx, item_code):
 #useless
 
 
-@client.command(brief="Usless as fuck")
+@client.command(brief="Join vc.")
 async def join(ctx):
     channel = ctx.message.author.voice.channel
     await channel.connect()
