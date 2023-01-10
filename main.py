@@ -10,7 +10,6 @@ from requests import get
 import asyncio
 import random
 import datetime
-import youtube_dl
 import time
 from discord.ext.commands import cooldown, BucketType
 
@@ -561,5 +560,5 @@ async def join(ctx):
     await channel.connect()
 
 
-keep_alive.keep_alive()
+
 client.run(os.environ['TOKEN'])
