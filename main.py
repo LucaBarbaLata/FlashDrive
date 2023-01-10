@@ -561,4 +561,4 @@ async def join(ctx):
 
 
 
-client.run("MTAwMzYyODU3NjIyNDA3MTY4Mg.Gm57xE.xkpz5IprhDoWSwJIHcBqPIxCR2kBCE0y7UyfkU")
+client.run("MTAwMzYyODU3NjIyNDA3MTY4Mg.GPNX7L.LyTSo5gtNbaqazvLPhcZdfcN86AasfERMg_hMc")
