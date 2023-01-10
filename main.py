@@ -7,7 +7,6 @@ from discord.ext.commands import has_permissions, CheckFailure
 from discord.ext.commands import has_permissions, MissingPermissions
 import json
 from requests import get
-import keep_alive
 import asyncio
 import random
 import datetime
