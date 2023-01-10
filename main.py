@@ -14,7 +14,7 @@ import time
 from discord.ext.commands import cooldown, BucketType
 
 
-client = commands.Bot(command_prefix='.')
+client = commands.Bot(intents=discord.Intents.all(), command_prefix='.')
 
 
 @client.event
@@ -561,4 +561,4 @@ async def join(ctx):
 
 
 
-client.run(os.environ['TOKEN'])
+client.run("MTAwMzYyODU3NjIyNDA3MTY4Mg.Gm57xE.xkpz5IprhDoWSwJIHcBqPIxCR2kBCE0y7UyfkU")
