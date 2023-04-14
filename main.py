@@ -12,7 +12,7 @@ import random
 import datetime
 import time
 from discord.ext.commands import cooldown, BucketType
-
+import aiohttp
 
 client = commands.Bot(intents=discord.Intents.all(), command_prefix='.')
 
@@ -33,6 +33,24 @@ async def on_ready():
             f'.help for a list of commands! 🥳 🎉 Currently in {len(client.guilds)} servers! 🎉'
         ))
 
+@client.command(brief="ChatGPT goes brrrrrrrrr.....")
+async def ai(ctx: commands.Context, *, prompt: str):
+    print("hi")
+    async with aiohttp.ClientSession() as session:
+        payload = {
+            "model": "text-davinci-003",
+            "prompt": prompt,
+            "temperature": 0.5,
+            "max_tokens": 50,
+            "pressence_penalty": 0,
+            "frequency_penalty": 0,
+            "best_of": 1,
+        }
+        headers = {"Authorization": "Bearer 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"}
+        async def with session.post("https://api.openai.com/v1/completions", json=payload, headers=headers) as resp:
+            response = await resp.json()
+            embed = discord.Embed(title="Response:", description=response["choices"][0]["text"])
+            await ctx.reply(embed=embed)
 
 @client.command(brief="Used to display the server's stats")
 async def serverstats(ctx):
