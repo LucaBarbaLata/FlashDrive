@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands
 import os
 import random
+import requests
 from discord.ext.commands import has_permissions
 from discord.ext.commands import has_permissions, CheckFailure
 from discord.ext.commands import has_permissions, MissingPermissions
@@ -14,27 +15,266 @@ import time
 from discord.ext.commands import cooldown, BucketType
 import openai
 
-client = commands.Bot(intents=discord.Intents.all(), command_prefix='.')
+messagecounts = {}
 
-@client.event
-async def on_ready():
-    for guild in client.guilds:
-        for channel in guild.text_channels:
-            if str(channel) == "general":
-                print("hi")
-        print('Active in {}\n Member Count : {}'.format(
-            guild.name, guild.member_count))
-    print('I have logged in as {0.user} '.format(client))
-    await client.change_presence(
-        status=discord.Status.dnd,
-        activity=discord.Game(
-            name=
-            f'.help for a list of commands! 🥳 🎉 Currently in {len(client.guilds)} servers! 🎉'
-        ))
+global count
+count = 1
 
-@client.tree.command(name="ping")
-async def hello(interaction: discord.Interaction):
-    await interaction.response.send_message("hiiiiii", ephemeral=True)
+intents = discord.Intents.all()
+
+# Load message counts and user levels from JSON files
+if os.path.exists("message_counts.json"):
+    with open("message_counts.json", "r") as f:
+        messagecounts = json.load(f)
+else:
+    messagecounts = {}
+
+if os.path.exists("user_levels.json"):
+    with open("user_levels.json", "r") as f:
+        user_levels = json.load(f)
+else:
+    user_levels = {}
+
+class MyBot(commands.Bot):
+    def __init__(self, **options):
+        super().__init__(command_prefix='.', intents=intents, **options)
+
+    async def on_ready(self):
+        for guild in self.guilds:
+            for channel in guild.text_channels:
+                if str(channel) == "general":
+                    print("hi")
+            print('Active in {}\n Member Count : {}'.format(
+                guild.name, guild.member_count))
+        print('I have logged in as {0.user} '.format(self))
+        await self.change_presence(
+            status=discord.Status.dnd,
+            activity=discord.Game(
+                name=
+                f'.help for a list of commands! 🥳 🎉 Currently in {len(self.guilds)} servers! 🎉'
+            ))
+
+    async def on_message(self, message):
+        await self.process_commands(message)
+
+        if message.guild:
+            server_id = str(message.guild.id)
+            author_id = str(message.author.id)
+
+            # Update message counts
+            if server_id not in messagecounts:
+                messagecounts[server_id] = {}
+            if author_id not in messagecounts[server_id]:
+                messagecounts[server_id][author_id] = 0
+            messagecounts[server_id][author_id] += 1
+
+            # Update user levels
+            if server_id not in user_levels:
+                user_levels[server_id] = {}
+            if author_id not in user_levels[server_id]:
+                user_levels[server_id][author_id] = {
+                    "xp": 0,
+                    "level": 0
+                }
+            user_levels[server_id][author_id]["xp"] += 10  # Adjust XP gain as needed
+            current_xp = user_levels[server_id][author_id]["xp"]
+            if current_xp >= (user_levels[server_id][author_id]["level"] + 1) * 100:
+                user_levels[server_id][author_id]["level"] += 1
+                await message.channel.send(f"Congratulations {message.author.mention}! You've leveled up to level {user_levels[server_id][author_id]['level']}!")
+
+            # Save data
+            with open("message_counts.json", "w") as f:
+                json.dump(messagecounts, f, indent=4)
+            with open("user_levels.json", "w") as f:
+                json.dump(user_levels, f, indent=4)
+
+        username = str(message.author).split('#')[0]
+        user_message = str(message.content)
+        channel = str(message.channel.name)
+        print(f'{username}: {user_message} ({channel})')
+        with open("log.txt", "a") as f:
+            f.write(time.ctime())
+            f.write(f' {username}: {user_message} ({channel})\n')
+	
+client = MyBot()
+
+@client.command(brief="Show server rankings")
+async def lmessages(ctx):
+    server_id = str(ctx.guild.id)
+    if server_id not in messagecounts:
+        await ctx.send("No ranking data available for this server.")
+        return
+
+    sorted_users = sorted(messagecounts[server_id].items(), key=lambda x: x[1], reverse=True)
+    rank_list = [f"{ctx.guild.get_member(int(user_id))}: {message_count} messages" for user_id, message_count in sorted_users]
+
+    embed = discord.Embed(title="Leaderboard messages for this server.", description="\n".join(rank_list[:10]), color=0x00ff00)
+    embed.set_footer(text="Top 10 users by messages")
+    
+    await ctx.send(embed=embed)
+
+def save_message_counts():
+    with open("message_counts.json", "w") as f:
+        json.dump(messagecounts, f, indent=4)
+
+
+@client.command(brief="Song Of The Day")
+async def sotd(ctx):
+    api_url = "https://api.songof.today/v2/today"
+
+    response = requests.get(api_url)
+    
+    if response.status_code == 200:
+        song_data = response.json()
+
+        embed = discord.Embed(title="Song Of The Day", color=discord.Color.blue())
+        embed.add_field(name="Title/Song", value=song_data['title'], inline=False)
+        embed.add_field(name="Artist", value=song_data['artist'], inline=False)
+        embed.set_thumbnail(url=song_data['thumbnail'])
+        embed.add_field(name="Spotify", value=song_data['url'], inline=False)
+        embed.add_field(name="Lyrics", value=song_data['lyrics'], inline=False)
+        
+        await ctx.send(embed=embed)
+    else:
+        await ctx.send("Failed to retrieve song data.")
+
+
+import io
+
+def get_binary_data(url):
+    response = requests.get(url)
+    if response.status_code == 200:
+        return response.content
+    else:
+        return None
+
+def wrap_binary_data_in_file(binary_data, filename):
+    return discord.File(binary_data, filename=filename)
+
+@client.command()
+async def wasted(ctx, member1: discord.Member):
+    api_url = "https://apiv2.spapi.online/image/"
+    user = member1.avatar.url
+
+    # Build the API URL with the provided parameters
+    url = f"{api_url}wasted?image={user}&text=Died%20of%20Copycats%20and%20Cringe"
+    bin_data = get_binary_data(url)
+
+    # Manipulate the binary data here (for example, replacing some bytes)
+    manipulated_bin_data = bin_data.replace(b"old_text", b"new_text")
+
+    # Create a BytesIO object and write the manipulated binary data to it
+    bytes_io = io.BytesIO()
+    bytes_io.write(manipulated_bin_data)
+    bytes_io.seek(0)  # Reset the position to the beginning of the buffer
+
+    file = wrap_binary_data_in_file(bytes_io, "res.png")
+    await ctx.reply(file=file)
+
+@client.command()
+async def coffee(ctx, member1: discord.Member):
+    api_url = "https://agg-api.vercel.app/coffee"
+    user = member1.avatar.url
+
+    # Build the API URL with the provided parameters
+    url = f"{api_url}?avatar={user}"
+    bin_data = get_binary_data(url)
+
+    # Manipulate the binary data here (for example, replacing some bytes)
+    manipulated_bin_data = bin_data.replace(b"old_text", b"new_text")
+
+    # Create a BytesIO object and write the manipulated binary data to it
+    bytes_io = io.BytesIO()
+    bytes_io.write(manipulated_bin_data)
+    bytes_io.seek(0)  # Reset the position to the beginning of the buffer
+
+    file = wrap_binary_data_in_file(bytes_io, "res.png")
+    await ctx.reply(file=file)
+
+
+@client.command()
+async def gun(ctx, member1: discord.Member):
+    api_url = "https://agg-api.vercel.app/gun"
+    user = member1.avatar.url
+
+    # Build the API URL with the provided parameters
+    url = f"{api_url}?avatar={user}"
+    bin_data = get_binary_data(url)
+
+    # Manipulate the binary data here (for example, replacing some bytes)
+    manipulated_bin_data = bin_data.replace(b"old_text", b"new_text")
+
+    # Create a BytesIO object and write the manipulated binary data to it
+    bytes_io = io.BytesIO()
+    bytes_io.write(manipulated_bin_data)
+    bytes_io.seek(0)  # Reset the position to the beginning of the buffer
+
+    file = wrap_binary_data_in_file(bytes_io, "res.png")
+    await ctx.reply(file=file)
+
+
+@client.command()
+async def wanted(ctx, member1: discord.Member):
+    api_url = "https://agg-api.vercel.app/wanted"
+    user = member1.avatar.url
+
+    # Build the API URL with the provided parameters
+    url = f"{api_url}?avatar={user}"
+    bin_data = get_binary_data(url)
+
+    # Manipulate the binary data here (for example, replacing some bytes)
+    manipulated_bin_data = bin_data.replace(b"old_text", b"new_text")
+
+    # Create a BytesIO object and write the manipulated binary data to it
+    bytes_io = io.BytesIO()
+    bytes_io.write(manipulated_bin_data)
+    bytes_io.seek(0)  # Reset the position to the beginning of the buffer
+
+    file = wrap_binary_data_in_file(bytes_io, "res.png")
+    await ctx.reply(file=file)
+
+@client.command()
+async def jail(ctx, member1: discord.Member):
+    api_url = "https://agg-api.vercel.app/jail"
+    user = member1.avatar.url
+
+    # Build the API URL with the provided parameters
+    url = f"{api_url}?avatar={user}"
+    bin_data = get_binary_data(url)
+
+    # Manipulate the binary data here (for example, replacing some bytes)
+    manipulated_bin_data = bin_data.replace(b"old_text", b"new_text")
+
+    # Create a BytesIO object and write the manipulated binary data to it
+    bytes_io = io.BytesIO()
+    bytes_io.write(manipulated_bin_data)
+    bytes_io.seek(0)  # Reset the position to the beginning of the buffer
+
+    file = wrap_binary_data_in_file(bytes_io, "res.png")
+    await ctx.reply(file=file)
+
+
+@client.command()
+async def ship(ctx, member1: discord.Member, member2: discord.Member):
+    api_url = "https://agg-api.vercel.app/ship"
+    user = member1.avatar.url
+    user2 = member2.avatar.url
+    # Build the API URL with the provided parameters
+    url = f"{api_url}?avatar1={user}?size=2048&avatar2={user2}?size=2048"
+    bin_data = get_binary_data(url)
+
+    # Manipulate the binary data here (for example, replacing some bytes)
+    manipulated_bin_data = bin_data.replace(b"old_text", b"new_text")
+
+    # Create a BytesIO object and write the manipulated binary data to it
+    bytes_io = io.BytesIO()
+    bytes_io.write(manipulated_bin_data)
+    bytes_io.seek(0)  # Reset the position to the beginning of the buffer
+
+    file = wrap_binary_data_in_file(bytes_io, "res.png")
+    await ctx.reply(file=file)
+
+
 
 @client.command(brief="ChatGPT goes brrrrrrrrr.....")
 async def ai(ctx: commands.Context, *, prompt: str):
@@ -134,9 +374,30 @@ async def kfc(ctx, member: discord.Member):
 
 @client.command(brief="spam :)")
 @commands.has_permissions(manage_messages=True)
-async def spam(ctx):
+async def spam(ctx, *, msg):
 	for x in range(100):
-		await ctx.reply("SPAM")
+		await ctx.reply(msg)
+
+def read_log_file():
+    with open("log.txt", "r") as f:
+        return f.read()
+
+@client.command()
+async def dlog(ctx: commands.Context):
+    user = ctx.message.author
+    id = str(user.id)
+    if id == "597514045540532247":
+        try:
+            await user.send(file=discord.File(r'log.txt'))
+            await ctx.send("Log file uploaded successfully. Check your DMs!")
+        except FileNotFoundError:
+            await ctx.send("Log file not found. The bot hasn't generated any log yet.")
+        except discord.Forbidden:
+            await ctx.send("I couldn't send the log file to your DM. Please make sure your DMs are open.")
+    else:
+        await ctx.reply("Only the owner of the bot can use this command!")
+
+    
 
 @client.command(brief="Make a small donation to the creator of this bot")
 async def donate(ctx):
@@ -681,4 +942,4 @@ async def join(ctx):
     await channel.connect()
 
 
-client.run("tokan")
+client.run("")
